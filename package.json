@@ -1,0 +1,85 @@
+{
+  "name": "@bakissation/satim-testing",
+  "version": "0.0.0-semantically-released",
+  "description": "Deterministic in-memory mock of the SATIM (CIB/Edahabia) gateway for testing — a drop-in SatimClient double with scriptable scenarios and the official certification test cards. Build and CI Algerian payment flows with no SATIM account and no network.",
+  "author": "Abdelbaki Berkati (@bakissation)",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@bakissation/satim": "^2.0.0",
+    "@bakissation/dinar": "^1.1.0"
+  },
+  "devDependencies": {
+    "@bakissation/dinar": "^1.1.0",
+    "@bakissation/satim": "^2.0.0",
+    "@bakissation/tasdid": "^1.2.0",
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^20.10.0",
+    "eslint": "^9.18.0",
+    "semantic-release": "^25.0.3",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^1.2.0"
+  },
+  "keywords": [
+    "algeria",
+    "satim",
+    "cib",
+    "edahabia",
+    "payment",
+    "mock",
+    "testing",
+    "test-double",
+    "fixtures",
+    "sandbox",
+    "fintech",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bakissation/satim-testing.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bakissation/satim-testing/issues"
+  },
+  "homepage": "https://github.com/bakissation/satim-testing#readme"
+}
