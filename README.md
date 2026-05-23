@@ -88,14 +88,18 @@ npx satim-mock --port 8888
 #   apiBaseUrl : http://127.0.0.1:8888/payment/rest   ← point your app's SATIM client here
 ```
 
-Set your app's SATIM base URL to `http://127.0.0.1:8888/payment/rest`. In your e2e, the browser lands on the mock page and types a certification card — stable selectors: `#pan`, `#expiry`, `#cvv`, `#mock-pay`, `#mock-cancel`.
+Set your app's SATIM base URL to `http://127.0.0.1:8888/payment/rest`. The page mimics SATIM's real two-step flow — **card entry → 3-D Secure OTP → redirect** — and is served in the registered `language` (`fr`/`en`/`ar`, RTL for Arabic). Mock-only selectors: `#pan`, `#expiry`, `#cvv`, `#mock-pay`, then `#otp`, `#mock-otp-confirm` (cancel: `#mock-cancel`).
 
 ```ts
 // Playwright
-await page.getByText('Pay').click();             // your app registers → redirects to the mock page
+await page.getByText('Pay').click();             // your app registers → redirects to the mock card page
 await page.fill('#pan', testCards.valid.pan);    // a real cert card (declined cards → refused)
-await page.click('#mock-pay');                   // → 302 back to your returnUrl?orderId=…
+await page.click('#mock-pay');                   // → 3-D Secure OTP page
+await page.fill('#otp', '123456');               // correct OTP; a wrong one re-prompts, 3 wrong → declined
+await page.click('#mock-otp-confirm');           // → 302 back to your returnUrl?orderId=…
 ```
+
+> The selectors are **intentionally mock-only** — they don't match SATIM's real page. Automating a live hosted payment page is against payment-industry norms, so a page-driving e2e written here passes against the simulator and **fails against the real gateway by design**. The simulator lets you prove your *integration flow* (register → redirect → OTP → return → confirm) without ever touching the real page.
 
 ### Programmatically (in-process)
 
