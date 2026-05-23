@@ -27,6 +27,21 @@ describe('createMockSatim drives tasdid', () => {
     expect((await checkout.reconcile(paymentId)).status).toBe('failed');
   });
 
+  it('a declined cert card surfaces its reason (actionCodeDescription / respCode_desc)', async () => {
+    const satim = createMockSatim({ autoSettle: false });
+    const reg = await satim.register({
+      orderNumber: 'NO2',
+      amount: 5000,
+      returnUrl: 'https://shop.dz/return',
+      udf1: 'NO2',
+    });
+    satim.pay(reg.orderId!, { card: testCards.stolen.pan }); // buyer uses a stolen cert card
+    const status = await satim.getOrderStatus(reg.orderId!);
+    expect(status.orderStatus).toBe(6);
+    expect(status.actionCodeDescription).toBe(testCards.stolen.reason);
+    expect((status.params as Record<string, unknown>).respCode_desc).toBe(testCards.stolen.reason);
+  });
+
   it('abandoned → stays pending, then expires past the 20-min window', async () => {
     const satim = createMockSatim({ scenario: 'abandoned' });
     const checkout = createCheckout({ satim, store: createMemoryStore() });
