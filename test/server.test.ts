@@ -30,11 +30,19 @@ async function boot(): Promise<{ mock: MockSatimServer; satim: SatimClient }> {
 /** Simulate the buyer's browser on the hosted page: GET the page, submit the card, follow the 302. */
 async function payOnPage(formUrl: string, opts: { pan?: string; cancel?: boolean } = {}): Promise<Response> {
   const u = new URL(formUrl);
-  const html = await (await fetch(formUrl)).text();
-  expect(html).toContain('id="mock-pay"'); // the page is bottable
-  const body = new URLSearchParams({ mdOrder: u.searchParams.get('mdOrder') ?? '', action: opts.cancel ? 'cancel' : 'pay' });
-  if (opts.pan) body.set('pan', opts.pan);
-  return fetch(`${u.origin}/pay`, { method: 'POST', body, redirect: 'manual' });
+  const mdOrder = u.searchParams.get('mdOrder') ?? '';
+  expect(await (await fetch(formUrl)).text()).toContain('id="mock-pay"'); // card page is bottable
+  if (opts.cancel) {
+    return fetch(`${u.origin}/pay`, { method: 'POST', body: new URLSearchParams({ mdOrder, action: 'cancel' }), redirect: 'manual' });
+  }
+  // step 1: submit card → 3-D Secure OTP page
+  const card = new URLSearchParams({ mdOrder, action: 'pay', language: 'fr' });
+  if (opts.pan) card.set('pan', opts.pan);
+  expect(await (await fetch(`${u.origin}/pay`, { method: 'POST', body: card })).text()).toContain('id="otp"');
+  // step 2: confirm OTP → settle + redirect
+  const otp = new URLSearchParams({ mdOrder, otp: '123456', action: 'confirm', language: 'fr' });
+  if (opts.pan) otp.set('pan', opts.pan);
+  return fetch(`${u.origin}/pay/otp`, { method: 'POST', body: otp, redirect: 'manual' });
 }
 
 describe('register + hosted page + getOrderStatus (real satim client over the wire)', () => {
@@ -145,5 +153,48 @@ describe("SATIM cahier de recette (the CIBWEBSATIM validation matrix) over the m
     await payOnPage(cancelCase.formUrl!, { pan: testCards.valid.pan });
     mock.core.reverse(cancelCase.orderId!);
     expect((await satim.getOrderStatus(cancelCase.orderId!)).orderStatus).toBe(3);
+  });
+});
+
+describe('localized page (mimics SATIM serving the page in the registered language)', () => {
+  it('renders fr/en/ar (RTL for Arabic) with mock-only selectors, never SATIM real DOM', async () => {
+    const { satim } = await boot();
+    const cases: Array<{ lang: 'fr' | 'en' | 'ar'; needle: string; rtl: boolean }> = [
+      { lang: 'fr', needle: 'Numéro de la carte', rtl: false },
+      { lang: 'en', needle: 'Card number', rtl: false },
+      { lang: 'ar', needle: 'رقم البطاقة', rtl: true },
+    ];
+    let i = 0;
+    for (const { lang, needle, rtl } of cases) {
+      const reg = await satim.register({ orderNumber: `L${i++}`, amount: 5000, returnUrl: 'https://shop.dz/r', udf1: 'x', language: lang });
+      expect(reg.formUrl).toContain(`language=${lang}`);
+      const html = await (await fetch(reg.formUrl!)).text();
+      expect(html).toContain(`lang="${lang}"`);
+      expect(html).toContain(`dir="${rtl ? 'rtl' : 'ltr'}"`);
+      expect(html).toContain(needle);
+      expect(html).toContain('id="mock-pay"'); // our mock-only selector
+      expect(html).not.toContain('buttonPayment'); // we never mirror SATIM's real DOM (no botting the real page)
+    }
+  });
+});
+
+describe('3-D Secure OTP step', () => {
+  it('rejects a wrong OTP and declines after 3 attempts (mimics SATIM lockout)', async () => {
+    const { satim } = await boot();
+    const reg = await satim.register({ orderNumber: 'WO', amount: 5000, returnUrl: 'https://shop.dz/ok', failUrl: 'https://shop.dz/no', udf1: 'x' });
+    const u = new URL(reg.formUrl!);
+    const md = u.searchParams.get('mdOrder') ?? '';
+    await fetch(reg.formUrl!);
+    await fetch(`${u.origin}/pay`, { method: 'POST', body: new URLSearchParams({ mdOrder: md, action: 'pay', pan: testCards.valid.pan, language: 'fr' }) });
+    const wrong = (): Promise<Response> =>
+      fetch(`${u.origin}/pay/otp`, { method: 'POST', body: new URLSearchParams({ mdOrder: md, pan: testCards.valid.pan, otp: '000000', action: 'confirm', language: 'fr' }), redirect: 'manual' });
+    const r1 = await wrong();
+    expect(r1.status).toBe(200); // re-prompted, not redirected
+    expect(await r1.text()).toContain('mock-otp-error');
+    await wrong(); // 2nd
+    const r3 = await wrong(); // 3rd → declined
+    expect(r3.status).toBe(302);
+    expect(r3.headers.get('location')).toContain('/no?orderId=');
+    expect((await satim.getOrderStatus(md)).orderStatus).toBe(6);
   });
 });
