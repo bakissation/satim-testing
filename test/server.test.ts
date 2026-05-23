@@ -72,6 +72,9 @@ describe('register + hosted page + getOrderStatus (real satim client over the wi
     const status = await satim.getOrderStatus(reg.orderId!);
     expect(status.orderStatus).toBe(6);
     expect(status.isPaid()).toBe(false);
+    // the decline carries the cert-card reason (what a merchant must show on the return page)
+    expect(status.actionCodeDescription).toBe(testCards.stolen.reason);
+    expect((status.params as Record<string, unknown>).respCode_desc).toBe(testCards.stolen.reason);
   });
 
   it('stays registered (status 0) until the buyer completes the page', async () => {
