@@ -5,7 +5,7 @@ import type {
   RegisterOrderResponse,
 } from '@bakissation/satim';
 import { toCentimes } from './amount.js';
-import { type TestCard, cardOutcome } from './cards.js';
+import { type TestCard, cardOutcome, cardReason } from './cards.js';
 
 /** The outcome a freshly-registered order will settle to. */
 export type Outcome = 'approved' | 'declined' | 'abandoned';
@@ -24,6 +24,8 @@ export interface MockOrder {
   settled: boolean;
   pan: string | null;
   approvalCode: string | null;
+  /** SATIM result/decline reason (the cert-card reason for a declined card). */
+  actionCodeDescription: string | null;
   refundedCentimes: number;
   registeredAtMs: number;
 }
@@ -63,8 +65,12 @@ function confirmResponse(o: {
   pan?: string | null;
   approvalCode?: string | null;
   orderNumber?: string | null;
+  actionCodeDescription?: string | null;
+  respCode?: string | null;
+  respCodeDesc?: string | null;
 }): ConfirmOrderResponse {
   const errorCode = o.errorCode ?? 0;
+  const hasParams = o.respCode != null || o.respCodeDesc != null;
   return {
     raw: {},
     errorCode,
@@ -72,7 +78,7 @@ function confirmResponse(o: {
     amount: o.amount ?? null,
     orderNumber: o.orderNumber ?? null,
     pan: o.pan ?? null,
-    actionCodeDescription: null,
+    actionCodeDescription: o.actionCodeDescription ?? null,
     authorizationResponseId: null,
     approvalCode: o.approvalCode ?? null,
     cardholderName: null,
@@ -83,7 +89,7 @@ function confirmResponse(o: {
     clientId: null,
     bindingId: null,
     paymentAccountReference: null,
-    params: null,
+    params: hasParams ? { respCode: o.respCode ?? undefined, respCode_desc: o.respCodeDesc ?? undefined } : null,
     isSuccessful: () => errorCode === 0,
     isPaid: () => o.orderStatus === 2,
   };
@@ -135,6 +141,7 @@ export class MockSatimCore {
       settled: false,
       pan: null,
       approvalCode: null,
+      actionCodeDescription: null,
       refundedCentimes: 0,
       registeredAtMs: this.nowMs(),
     });
@@ -181,7 +188,7 @@ export class MockSatimCore {
       const pan = typeof opts.card === 'string' ? opts.card : opts.card.pan;
       if (cardOutcome(pan) === 'declined') {
         o.pan = mask(pan);
-        this.applyDeclined(o);
+        this.applyDeclined(o, cardReason(pan));
         return;
       }
       this.applyPaid(o, pan);
@@ -190,8 +197,9 @@ export class MockSatimCore {
     this.applyPaid(o);
   }
 
-  decline(orderId: string): void {
-    this.applyDeclined(this.must(orderId));
+  /** Decline an order. `reason` becomes the SATIM result reason (`actionCodeDescription`/`respCode_desc`). */
+  decline(orderId: string, reason?: string): void {
+    this.applyDeclined(this.must(orderId), reason ?? null);
   }
 
   /** Cancel/void a transaction via the gateway (SATIM "annulation") ⇒ OrderStatus 3. */
@@ -247,13 +255,32 @@ export class MockSatimCore {
     o.approvalCode = APPROVAL_CODE;
   }
 
-  private applyDeclined(o: MockOrder): void {
+  private applyDeclined(o: MockOrder, reason: string | null = null): void {
     o.status = 6;
     o.settled = true;
+    o.actionCodeDescription = reason;
+  }
+
+  /** The SATIM result reason — a specific card/event reason if set, else a status default. */
+  private describe(o: MockOrder): string {
+    if (o.actionCodeDescription) return o.actionCodeDescription;
+    switch (o.status) {
+      case 2:
+        return 'Votre paiement a été accepté';
+      case 6:
+        return 'Votre paiement a été refusé';
+      case 4:
+        return 'Transaction remboursée';
+      case 3:
+        return 'Transaction annulée';
+      default:
+        return 'Commande enregistrée, non payée';
+    }
   }
 
   private view(o: MockOrder): ConfirmOrderResponse {
     const captured = o.status === 2 || o.status === 4;
+    const desc = this.describe(o);
     return confirmResponse({
       orderStatus: o.status,
       amount: o.amountCentimes,
@@ -261,6 +288,9 @@ export class MockSatimCore {
       pan: o.pan,
       approvalCode: o.approvalCode,
       orderNumber: o.orderNumber,
+      actionCodeDescription: desc,
+      respCode: o.status === 2 ? '00' : null,
+      respCodeDesc: desc,
     });
   }
 
