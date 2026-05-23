@@ -14,9 +14,26 @@ npm i -D @bakissation/satim-testing
 
 ## Why
 
-SATIM's `test2.satim.dz` is remote, gated behind certification credentials, and non-deterministic — useless for unit tests/CI. `satim-testing` is a local, deterministic double of the gateway, so payments get green tests like everything else. It satisfies the [`@bakissation/satim`](https://github.com/bakissation/satim) `SatimClient` interface, so it drops straight into [`@bakissation/tasdid`](https://github.com/bakissation/tasdid) (or any code that takes a `SatimClient`).
+SATIM's `test2.satim.dz` is remote, gated behind certification credentials, and non-deterministic — useless for unit tests/CI. `satim-testing` is a local, deterministic double of the gateway, so payments get green tests like everything else.
+
+It satisfies the [`@bakissation/satim`](https://github.com/bakissation/satim) `SatimClient` interface, so it works **anywhere a real SATIM client goes** — swap `createSatimClient(config)` for `createMockSatim()` in your tests, whether you call SATIM **directly** or through [`@bakissation/tasdid`](https://github.com/bakissation/tasdid).
+
+### Testing a direct `@bakissation/satim` integration
 
 ```ts
+import { createMockSatim } from '@bakissation/satim-testing';
+
+// production: const satim = createSatimClient(config)
+const satim = createMockSatim();                 // ← in tests
+const reg = await satim.register({ orderNumber: 'A1', amount: 5000, returnUrl: '…', udf1: 'A1' });
+const status = await satim.getOrderStatus(reg.orderId!);
+status.isPaid();                                 // → true   (no account, no network)
+```
+
+### Testing a `@bakissation/tasdid` checkout
+
+```ts
+import { Dinar } from '@bakissation/dinar';
 import { createMockSatim } from '@bakissation/satim-testing';
 import { createCheckout, createMemoryStore } from '@bakissation/tasdid';
 
