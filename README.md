@@ -33,6 +33,7 @@ status.isPaid();                                 // → true   (no account, no n
 ### Testing a `@bakissation/tasdid` checkout
 
 ```ts
+import { Dinar } from '@bakissation/dinar';
 import { createMockSatim } from '@bakissation/satim-testing';
 import { createCheckout, createMemoryStore } from '@bakissation/tasdid';
 
