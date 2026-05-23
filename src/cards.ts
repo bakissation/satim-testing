@@ -44,6 +44,13 @@ export function cardOutcome(pan: string): 'approved' | 'declined' {
   return hit ? hit.outcome : 'declined';
 }
 
+/** The SATIM cert-sheet reason label for a PAN (e.g. `Stolen`), or `null` for an unknown PAN. */
+export function cardReason(pan: string): string | null {
+  const clean = pan.replace(/\s/g, '');
+  const hit = Object.values(testCards).find((c) => c.pan === clean);
+  return hit ? hit.reason : null;
+}
+
 /** The result SATIM expects for a certification line item. */
 export type CertExpectation = 'accepted' | 'refused' | 'refunded' | 'cancelled';
 

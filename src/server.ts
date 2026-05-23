@@ -134,16 +134,8 @@ export function createMockSatimServer(opts: MockSatimServerOptions = {}): MockSa
     const r = core.status(p.mdOrder ?? '');
     if (r.errorCode !== 0) return { ErrorCode: String(r.errorCode), ErrorMessage: 'order not found or expired' };
     const status = r.orderStatus;
-    const desc =
-      status === 2
-        ? 'Votre paiement a été accepté'
-        : status === 6
-          ? 'Votre paiement a été refusé'
-          : status === 4
-            ? 'Transaction remboursée'
-            : status === 3
-              ? 'Transaction annulée'
-              : 'Commande enregistrée, non payée';
+    // The engine is the single source of the result reason (a specific card/event
+    // reason if one was set, else a status default).
     const out: Record<string, unknown> = {
       ErrorCode: '0',
       ErrorMessage: 'Success',
@@ -152,8 +144,8 @@ export function createMockSatimServer(opts: MockSatimServerOptions = {}): MockSa
       Amount: r.amount ?? undefined,
       currency: r.currency ?? '012',
       actionCode: status === 2 ? 0 : undefined,
-      actionCodeDescription: desc,
-      params: { respCode: status === 2 ? '00' : undefined, respCode_desc: desc },
+      actionCodeDescription: r.actionCodeDescription ?? undefined,
+      params: r.params ?? undefined,
     };
     if (r.pan) out.Pan = r.pan;
     if (r.approvalCode) out.approvalCode = r.approvalCode;
@@ -276,7 +268,7 @@ export function createMockSatimServer(opts: MockSatimServerOptions = {}): MockSa
       return;
     }
     if (p.action === 'cancel') {
-      core.decline(mdOrder);
+      core.decline(mdOrder, 'Paiement annulé par le porteur');
       redirectFor(res, mdOrder);
       return;
     }
@@ -295,7 +287,7 @@ export function createMockSatimServer(opts: MockSatimServerOptions = {}): MockSa
     }
     if (p.action === 'cancel') {
       otpAttempts.delete(mdOrder);
-      core.decline(mdOrder);
+      core.decline(mdOrder, 'Paiement annulé par le porteur');
       redirectFor(res, mdOrder);
       return;
     }
@@ -303,7 +295,8 @@ export function createMockSatimServer(opts: MockSatimServerOptions = {}): MockSa
       const tries = (otpAttempts.get(mdOrder) ?? 0) + 1;
       if (tries >= 3) {
         otpAttempts.delete(mdOrder);
-        core.decline(mdOrder); // too many wrong OTPs ⇒ declined (mimics SATIM's lockout)
+        // too many wrong OTPs ⇒ declined (mimics SATIM's 3-D Secure lockout)
+        core.decline(mdOrder, 'Nombre de tentatives du code de confirmation dépassé');
         redirectFor(res, mdOrder);
         return;
       }
