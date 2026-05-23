@@ -1,6 +1,6 @@
 # @bakissation/satim-testing
 
-**A deterministic in-memory mock of the SATIM (CIB/Edahabia) gateway** — a drop-in `SatimClient` double with scriptable scenarios, the official certification test cards, and SATIM's certification matrix as a ready-to-walk e2e checklist. Build and CI Algerian payment flows with **no SATIM account and no network**.
+**A deterministic mock of the SATIM (CIB/Edahabia) gateway** — a drop-in `SatimClient` double with scriptable scenarios, the official certification test cards, and SATIM's certification matrix as a ready-to-walk e2e checklist. **Plus a runnable HTTP simulator with a bottable payment page**, so a browser (Playwright/Cypress) can drive your real app end to end in CI. **No SATIM account, no network.**
 
 [![npm](https://img.shields.io/npm/v/@bakissation/satim-testing?label=npm&color=cb3837)](https://www.npmjs.com/package/@bakissation/satim-testing)
 [![CI](https://github.com/bakissation/satim-testing/actions/workflows/ci.yml/badge.svg)](https://github.com/bakissation/satim-testing/actions/workflows/ci.yml)
@@ -76,9 +76,41 @@ for (const c of certChecklist) {
 
 > Passing the whole checklist locally is the strongest signal an integration will certify — but **real certification still runs on `test2.satim.dz`**, watched by SATIM via the CIBWEBLab console. A mock can't certify you.
 
-## Grows into full e2e
+## Run a SATIM simulator in CI (browser e2e)
 
-The package is one in-memory engine (`MockSatimCore`) with transports layered on top. Today: the **client double** above (covers all integration logic). The same engine is built to grow a local **HTTP server** (real-wire integration) and a **bottable payment page** (browser Playwright e2e) without re-deciding any behaviour — `MockSatimCore` is exported for that.
+The same engine also powers an **HTTP server** that speaks the real SATIM REST wire (`register.do` / `acknowledgeTransaction.do` / `refund.do`) and serves a **bottable payment page** at the `formUrl`. Point your real app's SATIM client at it and let Playwright/Cypress drive the page with a **test card** — true end-to-end, no account, no network.
+
+### As a CLI service
+
+```bash
+npx satim-mock --port 8888
+# mock SATIM listening on http://127.0.0.1:8888
+#   apiBaseUrl : http://127.0.0.1:8888/payment/rest   ← point your app's SATIM client here
+```
+
+Set your app's SATIM base URL to `http://127.0.0.1:8888/payment/rest`. In your e2e, the browser lands on the mock page and types a certification card — stable selectors: `#pan`, `#expiry`, `#cvv`, `#mock-pay`, `#mock-cancel`.
+
+```ts
+// Playwright
+await page.getByText('Pay').click();             // your app registers → redirects to the mock page
+await page.fill('#pan', testCards.valid.pan);    // a real cert card (declined cards → refused)
+await page.click('#mock-pay');                   // → 302 back to your returnUrl?orderId=…
+```
+
+### Programmatically (in-process)
+
+```ts
+import { createMockSatimServer } from '@bakissation/satim-testing/server';
+import { createSatimClient } from '@bakissation/satim';
+
+const mock = createMockSatimServer();
+await mock.listen();                                       // ephemeral port
+const satim = createSatimClient({ /* … */, apiBaseUrl: mock.apiBaseUrl() });
+// register / drive the page / getOrderStatus exactly as in production…
+await mock.close();
+```
+
+It's the same `MockSatimCore` engine, so **the full cahier de recette and all 15 cert cards pass over the wire too** — verified in `test/server.test.ts`. (Still a simulator: **real certification runs on `test2.satim.dz`**.)
 
 ## License
 
